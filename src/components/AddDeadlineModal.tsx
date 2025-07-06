@@ -6,6 +6,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Checkbox } from '@/components/ui/checkbox';
 import { useToast } from '@/hooks/use-toast';
 
 interface AddDeadlineModalProps {
@@ -17,7 +18,7 @@ interface AddDeadlineModalProps {
     date: string;
     time: string;
     category: string;
-    prealert: string;
+    prealert: string[];
   }) => void;
   categories: string[];
 }
@@ -33,8 +34,24 @@ const AddDeadlineModal: React.FC<AddDeadlineModalProps> = ({
   const [date, setDate] = useState('');
   const [time, setTime] = useState('');
   const [category, setCategory] = useState('');
-  const [prealert, setPrealert] = useState('nessuno');
+  const [prealert, setPrealert] = useState<string[]>([]);
   const { toast } = useToast();
+
+  const prealertOptions = [
+    { value: '3mesi', label: '3 mesi prima' },
+    { value: '1mese', label: '1 mese prima' },
+    { value: '20giorni', label: '20 giorni prima' },
+    { value: '15giorni', label: '15 giorni prima' },
+    { value: '7giorni', label: '7 giorni prima' }
+  ];
+
+  const handlePrealertChange = (value: string, checked: boolean) => {
+    if (checked) {
+      setPrealert([...prealert, value]);
+    } else {
+      setPrealert(prealert.filter(p => p !== value));
+    }
+  };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -63,7 +80,7 @@ const AddDeadlineModal: React.FC<AddDeadlineModalProps> = ({
     setDate('');
     setTime('');
     setCategory('');
-    setPrealert('nessuno');
+    setPrealert([]);
     onClose();
   };
 
@@ -134,18 +151,19 @@ const AddDeadlineModal: React.FC<AddDeadlineModalProps> = ({
           </div>
           
           <div>
-            <Label htmlFor="prealert">Preavviso</Label>
-            <Select value={prealert} onValueChange={setPrealert}>
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="nessuno">Nessuno</SelectItem>
-                <SelectItem value="1h">1 ora prima</SelectItem>
-                <SelectItem value="6h">6 ore prima</SelectItem>
-                <SelectItem value="24h">24 ore prima</SelectItem>
-              </SelectContent>
-            </Select>
+            <Label>Preavvisi</Label>
+            <div className="space-y-2 mt-2">
+              {prealertOptions.map(option => (
+                <div key={option.value} className="flex items-center space-x-2">
+                  <Checkbox
+                    id={option.value}
+                    checked={prealert.includes(option.value)}
+                    onCheckedChange={(checked) => handlePrealertChange(option.value, checked as boolean)}
+                  />
+                  <Label htmlFor={option.value} className="text-sm">{option.label}</Label>
+                </div>
+              ))}
+            </div>
           </div>
           
           <div className="flex justify-end space-x-2 pt-4">
