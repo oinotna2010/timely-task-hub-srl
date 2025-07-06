@@ -16,27 +16,30 @@ const Login = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
 
-  // Utenti predefiniti
-  const users = [
-    { username: 'carlo', password: 'serisrl2025@', isAdmin: false },
-    { username: 'carmen', password: 'serisrl2025@', isAdmin: false },
-    { username: 'marcello', password: 'serisrl2025@', isAdmin: false },
-    { username: 'massimo', password: 'serisrl2025@', isAdmin: false },
-    { username: 'admin', password: 'SERISRL25%', isAdmin: true }
-  ];
-
   const handleLogin = (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
 
-    // Simula un delay per il login
     setTimeout(() => {
-      const user = users.find(u => u.username === username && u.password === password);
+      // Carica utenti dal localStorage o usa solo admin di default
+      const savedUsers = localStorage.getItem('users');
+      let users = [];
+      
+      if (savedUsers) {
+        users = JSON.parse(savedUsers);
+      } else {
+        users = [
+          { username: 'admin', password: 'SERISRL25%', isAdmin: true }
+        ];
+        localStorage.setItem('users', JSON.stringify(users));
+      }
+
+      const user = users.find((u: any) => u.username === username && u.password === password);
       
       if (user) {
-        // Salva i dati utente
         const userData = {
           username: user.username,
+          password: user.password,
           isAdmin: user.isAdmin,
           loginTime: new Date().toISOString()
         };
@@ -46,6 +49,17 @@ const Login = () => {
         if (rememberMe) {
           localStorage.setItem('rememberMe', 'true');
         }
+
+        // Log dell'azione
+        const log = {
+          id: Date.now().toString(),
+          action: 'Login',
+          user: user.username,
+          timestamp: new Date().toISOString(),
+          details: `L'utente ${user.username} ha effettuato l'accesso`
+        };
+        const existingLogs = JSON.parse(localStorage.getItem('activityLogs') || '[]');
+        localStorage.setItem('activityLogs', JSON.stringify([log, ...existingLogs]));
 
         toast({
           title: "Login effettuato",

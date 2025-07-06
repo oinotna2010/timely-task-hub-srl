@@ -5,16 +5,21 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Plus, LogOut, Bell, Download, Settings, Calendar, Clock, User } from 'lucide-react';
+import { Plus, LogOut, Bell, Download, Settings, Calendar, Clock, User, Check } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import AddDeadlineModal from '@/components/AddDeadlineModal';
 import ManageUsersModal from '@/components/ManageUsersModal';
 import ManageCategoriesModal from '@/components/ManageCategoriesModal';
-import { format, isAfter, isBefore, differenceInHours } from 'date-fns';
+import SettingsModal from '@/components/SettingsModal';
+import ActivityLogsModal from '@/components/ActivityLogsModal';
+import ConfirmDialog from '@/components/ConfirmDialog';
+import { exportToPDF } from '@/utils/pdfExport';
+import { format, isAfter, isBefore } from 'date-fns';
 import { it } from 'date-fns/locale';
 
 interface User {
   username: string;
+  password: string;
   isAdmin: boolean;
   loginTime: string;
 }
@@ -26,9 +31,10 @@ interface Deadline {
   date: string;
   time: string;
   category: string;
-  prealert: string;
+  prealert: string[];
   createdBy: string;
   createdAt: string;
+  completed?: boolean;
 }
 
 const Dashboard = () => {
@@ -40,7 +46,10 @@ const Dashboard = () => {
   const [showAddModal, setShowAddModal] = useState(false);
   const [showUsersModal, setShowUsersModal] = useState(false);
   const [showCategoriesModal, setShowCategoriesModal] = useState(false);
+  const [showSettingsModal, setShowSettingsModal] = useState(false);
+  const [showLogsModal, setShowLogsModal] = useState(false);
   const [activeTab, setActiveTab] = useState('active');
+  const [deadlineToDelete, setDeadlineToDelete] = useState<string | null>(null);
 
   useEffect(() => {
     const userData = localStorage.getItem('currentUser');
@@ -50,24 +59,20 @@ const Dashboard = () => {
     }
     setCurrentUser(JSON.parse(userData));
 
-    // Carica scadenze dal localStorage
     const savedDeadlines = localStorage.getItem('deadlines');
     if (savedDeadlines) {
       setDeadlines(JSON.parse(savedDeadlines));
     }
 
-    // Carica categorie dal localStorage
     const savedCategories = localStorage.getItem('categories');
     if (savedCategories) {
       setCategories(JSON.parse(savedCategories));
     }
 
-    // Richiedi permessi per le notifiche
     if ('Notification' in window && Notification.permission === 'default') {
       Notification.requestPermission();
     }
 
-    // Controlla le notifiche ogni minuto
     const notificationInterval = setInterval(checkNotifications, 60000);
     return () => clearInterval(notificationInterval);
   }, [navigate]);
@@ -75,15 +80,23 @@ const Dashboard = () => {
   const checkNotifications = () => {
     const now = new Date();
     deadlines.forEach(deadline => {
+      if (deadline.completed) return;
+      
       const deadlineDate = new Date(`${deadline.date}T${deadline.time}`);
       const hoursUntil = Math.floor((deadlineDate.getTime() - now.getTime()) / (1000 * 60 * 60));
       
-      if (deadline.prealert !== 'nessuno') {
-        const alertHours = parseInt(deadline.prealert.replace('h', ''));
+      deadline.prealert.forEach(alert => {
+        let alertHours = 0;
+        if (alert === '3mesi') alertHours = 24 * 90;
+        else if (alert === '1mese') alertHours = 24 * 30;
+        else if (alert === '20giorni') alertHours = 24 * 20;
+        else if (alert === '15giorni') alertHours = 24 * 15;
+        else if (alert === '7giorni') alertHours = 24 * 7;
+        
         if (hoursUntil === alertHours) {
           showNotification(deadline);
         }
-      }
+      });
     });
   };
 
@@ -94,7 +107,6 @@ const Dashboard = () => {
         icon: '/lovable-uploads/530a2c43-8991-4588-aa2d-28b1ac2322c7.png'
       });
 
-      // Suono di notifica
       const audio = new Audio('data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAACBhYqFbF1fdJivrJBhNjVgodDbq2EcBj+a2/LDciUFLIHO8tiJNwgZaLvt559NEAxQp+PwtmMcBjiR1/LMeSwFJHfH8N2QQAoUXrTp66hVFApGn+DyvmIYBzuS2e/MeSsFJHXU6t+OSAoTa7zn669VFApCqOH3xWEcBj2A3O3QhxoGMWzA7wAA');
       audio.play().catch(() => {});
 
@@ -103,6 +115,17 @@ const Dashboard = () => {
   };
 
   const handleLogout = () => {
+    // Log dell'azione
+    const log = {
+      id: Date.now().toString(),
+      action: 'Logout',
+      user: currentUser?.username || '',
+      timestamp: new Date().toISOString(),
+      details: `L'utente ${currentUser?.username} ha effettuato il logout`
+    };
+    const existingLogs = JSON.parse(localStorage.getItem('activityLogs') || '[]');
+    localStorage.setItem('activityLogs', JSON.stringify([log, ...existingLogs]));
+
     localStorage.removeItem('currentUser');
     if (localStorage.getItem('rememberMe') !== 'true') {
       localStorage.clear();
@@ -122,6 +145,17 @@ const Dashboard = () => {
     setDeadlines(updatedDeadlines);
     localStorage.setItem('deadlines', JSON.stringify(updatedDeadlines));
     
+    // Log dell'azione
+    const log = {
+      id: Date.now().toString(),
+      action: 'Aggiunta scadenza',
+      user: currentUser?.username || '',
+      timestamp: new Date().toISOString(),
+      details: `Aggiunta scadenza: ${deadline.title}`
+    };
+    const existingLogs = JSON.parse(localStorage.getItem('activityLogs') || '[]');
+    localStorage.setItem('activityLogs', JSON.stringify([log, ...existingLogs]));
+    
     toast({
       title: "Scadenza aggiunta",
       description: `"${deadline.title}" è stata aggiunta con successo`,
@@ -129,9 +163,23 @@ const Dashboard = () => {
   };
 
   const deleteDeadline = (id: string) => {
+    const deadline = deadlines.find(d => d.id === id);
     const updatedDeadlines = deadlines.filter(d => d.id !== id);
     setDeadlines(updatedDeadlines);
     localStorage.setItem('deadlines', JSON.stringify(updatedDeadlines));
+    
+    // Log dell'azione
+    const log = {
+      id: Date.now().toString(),
+      action: 'Eliminazione scadenza',
+      user: currentUser?.username || '',
+      timestamp: new Date().toISOString(),
+      details: `Eliminata scadenza: ${deadline?.title}`
+    };
+    const existingLogs = JSON.parse(localStorage.getItem('activityLogs') || '[]');
+    localStorage.setItem('activityLogs', JSON.stringify([log, ...existingLogs]));
+    
+    setDeadlineToDelete(null);
     
     toast({
       title: "Scadenza eliminata",
@@ -139,22 +187,73 @@ const Dashboard = () => {
     });
   };
 
-  const exportToPDF = () => {
-    // Implementazione semplificata per l'esportazione PDF
+  const toggleDeadlineCompleted = (id: string) => {
+    const updatedDeadlines = deadlines.map(d => 
+      d.id === id ? { ...d, completed: !d.completed } : d
+    );
+    setDeadlines(updatedDeadlines);
+    localStorage.setItem('deadlines', JSON.stringify(updatedDeadlines));
+    
+    const deadline = deadlines.find(d => d.id === id);
+    const action = deadline?.completed ? 'Riattivata' : 'Completata';
+    
+    // Log dell'azione
+    const log = {
+      id: Date.now().toString(),
+      action: `${action} scadenza`,
+      user: currentUser?.username || '',
+      timestamp: new Date().toISOString(),
+      details: `${action} scadenza: ${deadline?.title}`
+    };
+    const existingLogs = JSON.parse(localStorage.getItem('activityLogs') || '[]');
+    localStorage.setItem('activityLogs', JSON.stringify([log, ...existingLogs]));
+    
     toast({
-      title: "Esportazione PDF",
-      description: "Funzionalità in sviluppo - sarà disponibile presto",
+      title: `Scadenza ${action.toLowerCase()}`,
+      description: `"${deadline?.title}" è stata ${action.toLowerCase()}`,
     });
+  };
+
+  const handleExportPDF = async () => {
+    try {
+      await exportToPDF(deadlines, categories);
+      
+      // Log dell'azione
+      const log = {
+        id: Date.now().toString(),
+        action: 'Esportazione PDF',
+        user: currentUser?.username || '',
+        timestamp: new Date().toISOString(),
+        details: 'Esportato report PDF delle scadenze'
+      };
+      const existingLogs = JSON.parse(localStorage.getItem('activityLogs') || '[]');
+      localStorage.setItem('activityLogs', JSON.stringify([log, ...existingLogs]));
+      
+      toast({
+        title: "PDF Esportato",
+        description: "Il report è stato scaricato con successo",
+      });
+    } catch (error) {
+      toast({
+        title: "Errore nell'esportazione",
+        description: "Si è verificato un errore durante l'esportazione del PDF",
+        variant: "destructive",
+      });
+    }
   };
 
   const getActiveDeadlines = () => {
     const now = new Date();
-    return deadlines.filter(d => isAfter(new Date(`${d.date}T${d.time}`), now));
+    return deadlines.filter(d => !d.completed && isAfter(new Date(`${d.date}T${d.time}`), now));
   };
 
   const getPastDeadlines = () => {
     const now = new Date();
-    return deadlines.filter(d => isBefore(new Date(`${d.date}T${d.time}`), now));
+    return deadlines.filter(d => !d.completed && isBefore(new Date(`${d.date}T${d.time}`), now));
+  };
+
+  const getCompletedDeadlines = () => {
+    return deadlines.filter(d => d.completed);
   };
 
   const getDeadlinesByCategory = (deadlineList: Deadline[]) => {
@@ -168,7 +267,6 @@ const Dashboard = () => {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* Header */}
       <header className="bg-white shadow-sm border-b">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center h-16">
@@ -189,6 +287,10 @@ const Dashboard = () => {
                 {currentUser.username}
                 {currentUser.isAdmin && <Badge variant="secondary" className="ml-2">Admin</Badge>}
               </span>
+              <Button onClick={() => setShowSettingsModal(true)} variant="outline" size="sm">
+                <Settings className="w-4 h-4 mr-2" />
+                Impostazioni
+              </Button>
               <Button onClick={handleLogout} variant="outline" size="sm">
                 <LogOut className="w-4 h-4 mr-2" />
                 Esci
@@ -198,18 +300,20 @@ const Dashboard = () => {
         </div>
       </header>
 
-      {/* Main Content */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {/* Action Buttons */}
         <div className="flex flex-wrap gap-4 mb-8">
-          <Button onClick={() => setShowAddModal(true)} className="bg-black hover:bg-gray-800 text-white">
-            <Plus className="w-4 h-4 mr-2" />
-            Nuova Scadenza
-          </Button>
-          <Button onClick={exportToPDF} variant="outline">
+          {!currentUser.isAdmin && (
+            <Button onClick={() => setShowAddModal(true)} className="bg-black hover:bg-gray-800 text-white">
+              <Plus className="w-4 h-4 mr-2" />
+              Nuova Scadenza
+            </Button>
+          )}
+          
+          <Button onClick={handleExportPDF} variant="outline">
             <Download className="w-4 h-4 mr-2" />
             Esporta PDF
           </Button>
+          
           {currentUser.isAdmin && (
             <>
               <Button onClick={() => setShowUsersModal(true)} variant="outline">
@@ -220,12 +324,15 @@ const Dashboard = () => {
                 <Settings className="w-4 h-4 mr-2" />
                 Gestisci Categorie
               </Button>
+              <Button onClick={() => setShowLogsModal(true)} variant="outline">
+                <Bell className="w-4 h-4 mr-2" />
+                Log Attività
+              </Button>
             </>
           )}
         </div>
 
-        {/* Stats Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="text-sm font-medium">Scadenze Attive</CardTitle>
@@ -246,6 +353,15 @@ const Dashboard = () => {
           </Card>
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Completate</CardTitle>
+              <Check className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{getCompletedDeadlines().length}</div>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="text-sm font-medium">Totale Scadenze</CardTitle>
               <Bell className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
@@ -255,11 +371,11 @@ const Dashboard = () => {
           </Card>
         </div>
 
-        {/* Tabs */}
         <Tabs value={activeTab} onValueChange={setActiveTab}>
-          <TabsList className="grid w-full grid-cols-2">
+          <TabsList className="grid w-full grid-cols-3">
             <TabsTrigger value="active">Scadenze Attive</TabsTrigger>
             <TabsTrigger value="past">Scadenze Passate</TabsTrigger>
+            <TabsTrigger value="completed">Completate</TabsTrigger>
           </TabsList>
           
           <TabsContent value="active" className="space-y-4">
@@ -280,16 +396,28 @@ const Dashboard = () => {
                               <div className="flex items-center space-x-4 mt-2 text-sm text-gray-500">
                                 <span>📅 {format(new Date(`${deadline.date}T${deadline.time}`), 'dd/MM/yyyy HH:mm', { locale: it })}</span>
                                 <span>👤 {deadline.createdBy}</span>
-                                {deadline.prealert !== 'nessuno' && <span>🔔 {deadline.prealert}</span>}
+                                {deadline.prealert.length > 0 && (
+                                  <span>🔔 {deadline.prealert.join(', ')}</span>
+                                )}
                               </div>
                             </div>
-                            <Button 
-                              onClick={() => deleteDeadline(deadline.id)} 
-                              variant="destructive" 
-                              size="sm"
-                            >
-                              Elimina
-                            </Button>
+                            <div className="flex space-x-2">
+                              <Button 
+                                onClick={() => toggleDeadlineCompleted(deadline.id)} 
+                                variant="outline"
+                                size="sm"
+                              >
+                                <Check className="w-4 h-4 mr-1" />
+                                Completa
+                              </Button>
+                              <Button 
+                                onClick={() => setDeadlineToDelete(deadline.id)} 
+                                variant="destructive" 
+                                size="sm"
+                              >
+                                Elimina
+                              </Button>
+                            </div>
                           </div>
                         </div>
                       ))}
@@ -310,24 +438,81 @@ const Dashboard = () => {
                   <CardContent>
                     <div className="space-y-4">
                       {categoryDeadlines.map(deadline => (
-                        <div key={deadline.id} className="border rounded-lg p-4 bg-gray-50">
+                        <div key={deadline.id} className="border rounded-lg p-4 bg-red-50">
                           <div className="flex justify-between items-start">
                             <div className="flex-1">
-                              <h3 className="font-semibold text-lg text-gray-700">{deadline.title}</h3>
-                              <p className="text-gray-600 mt-1">{deadline.description}</p>
-                              <div className="flex items-center space-x-4 mt-2 text-sm text-gray-500">
+                              <h3 className="font-semibold text-lg text-red-800">{deadline.title}</h3>
+                              <p className="text-red-600 mt-1">{deadline.description}</p>
+                              <div className="flex items-center space-x-4 mt-2 text-sm text-red-500">
                                 <span>📅 {format(new Date(`${deadline.date}T${deadline.time}`), 'dd/MM/yyyy HH:mm', { locale: it })}</span>
                                 <span>👤 {deadline.createdBy}</span>
-                                <Badge variant="secondary">Scaduta</Badge>
+                                <Badge variant="destructive">Scaduta</Badge>
                               </div>
                             </div>
-                            <Button 
-                              onClick={() => deleteDeadline(deadline.id)} 
-                              variant="destructive" 
-                              size="sm"
-                            >
-                              Elimina
-                            </Button>
+                            <div className="flex space-x-2">
+                              <Button 
+                                onClick={() => toggleDeadlineCompleted(deadline.id)} 
+                                variant="outline"
+                                size="sm"
+                              >
+                                <Check className="w-4 h-4 mr-1" />
+                                Completa
+                              </Button>
+                              <Button 
+                                onClick={() => setDeadlineToDelete(deadline.id)} 
+                                variant="destructive" 
+                                size="sm"
+                              >
+                                Elimina
+                              </Button>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </CardContent>
+                </Card>
+              )
+            ))}
+          </TabsContent>
+
+          <TabsContent value="completed" className="space-y-4">
+            {Object.entries(getDeadlinesByCategory(getCompletedDeadlines())).map(([category, categoryDeadlines]) => (
+              categoryDeadlines.length > 0 && (
+                <Card key={category}>
+                  <CardHeader>
+                    <CardTitle className="text-lg">{category}</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="space-y-4">
+                      {categoryDeadlines.map(deadline => (
+                        <div key={deadline.id} className="border rounded-lg p-4 bg-green-50">
+                          <div className="flex justify-between items-start">
+                            <div className="flex-1">
+                              <h3 className="font-semibold text-lg text-green-800">{deadline.title}</h3>
+                              <p className="text-green-600 mt-1">{deadline.description}</p>
+                              <div className="flex items-center space-x-4 mt-2 text-sm text-green-500">
+                                <span>📅 {format(new Date(`${deadline.date}T${deadline.time}`), 'dd/MM/yyyy HH:mm', { locale: it })}</span>
+                                <span>👤 {deadline.createdBy}</span>
+                                <Badge className="bg-green-500">Completata</Badge>
+                              </div>
+                            </div>
+                            <div className="flex space-x-2">
+                              <Button 
+                                onClick={() => toggleDeadlineCompleted(deadline.id)} 
+                                variant="outline"
+                                size="sm"
+                              >
+                                Riattiva
+                              </Button>
+                              <Button 
+                                onClick={() => setDeadlineToDelete(deadline.id)} 
+                                variant="destructive" 
+                                size="sm"
+                              >
+                                Elimina
+                              </Button>
+                            </div>
                           </div>
                         </div>
                       ))}
@@ -341,12 +526,14 @@ const Dashboard = () => {
       </main>
 
       {/* Modals */}
-      <AddDeadlineModal 
-        isOpen={showAddModal}
-        onClose={() => setShowAddModal(false)}
-        onAdd={addDeadline}
-        categories={categories}
-      />
+      {!currentUser.isAdmin && (
+        <AddDeadlineModal 
+          isOpen={showAddModal}
+          onClose={() => setShowAddModal(false)}
+          onAdd={addDeadline}
+          categories={categories}
+        />
+      )}
       
       {currentUser.isAdmin && (
         <>
@@ -360,8 +547,26 @@ const Dashboard = () => {
             categories={categories}
             onCategoriesChange={setCategories}
           />
+          <ActivityLogsModal 
+            isOpen={showLogsModal}
+            onClose={() => setShowLogsModal(false)}
+          />
         </>
       )}
+      
+      <SettingsModal 
+        isOpen={showSettingsModal}
+        onClose={() => setShowSettingsModal(false)}
+        currentUser={currentUser}
+      />
+
+      <ConfirmDialog
+        isOpen={!!deadlineToDelete}
+        onClose={() => setDeadlineToDelete(null)}
+        onConfirm={() => deadlineToDelete && deleteDeadline(deadlineToDelete)}
+        title="Conferma eliminazione"
+        description="Sei sicuro di voler eliminare questa scadenza? Questa azione non può essere annullata."
+      />
     </div>
   );
 };
