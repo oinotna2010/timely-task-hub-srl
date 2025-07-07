@@ -79,11 +79,15 @@ const Dashboard = () => {
 
   const checkNotifications = () => {
     const now = new Date();
+    console.log('Controllo notifiche alle:', now.toLocaleString());
+    
     deadlines.forEach(deadline => {
       if (deadline.completed) return;
       
       const deadlineDate = new Date(`${deadline.date}T${deadline.time}`);
-      const hoursUntil = Math.floor((deadlineDate.getTime() - now.getTime()) / (1000 * 60 * 60));
+      const minutesUntil = Math.floor((deadlineDate.getTime() - now.getTime()) / (1000 * 60));
+      
+      console.log(`Scadenza: ${deadline.title}, minuti rimanenti: ${minutesUntil}`);
       
       deadline.prealert.forEach(alert => {
         let alertMinutes = 0;
@@ -97,10 +101,17 @@ const Dashboard = () => {
         else if (alert === '5min') alertMinutes = 5;
         else if (alert === '1min') alertMinutes = 1;
         
-        const minutesUntil = Math.floor((deadlineDate.getTime() - now.getTime()) / (1000 * 60));
-        
-        if (minutesUntil === alertMinutes) {
-          showNotification(deadline);
+        // Controlla se è il momento di inviare la notifica (con margine di 1 minuto)
+        if (minutesUntil <= alertMinutes && minutesUntil > (alertMinutes - 1)) {
+          const notificationKey = `${deadline.id}_${alert}`;
+          const sentNotifications = JSON.parse(localStorage.getItem('sentNotifications') || '[]');
+          
+          if (!sentNotifications.includes(notificationKey)) {
+            console.log(`Invio notifica per: ${deadline.title}, alert: ${alert}`);
+            showNotification(deadline);
+            sentNotifications.push(notificationKey);
+            localStorage.setItem('sentNotifications', JSON.stringify(sentNotifications));
+          }
         }
       });
     });
