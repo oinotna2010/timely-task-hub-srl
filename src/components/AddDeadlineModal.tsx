@@ -42,7 +42,11 @@ const AddDeadlineModal: React.FC<AddDeadlineModalProps> = ({
     { value: '1mese', label: '1 mese prima' },
     { value: '20giorni', label: '20 giorni prima' },
     { value: '15giorni', label: '15 giorni prima' },
-    { value: '7giorni', label: '7 giorni prima' }
+    { value: '7giorni', label: '7 giorni prima' },
+    { value: '30min', label: '30 minuti prima' },
+    { value: '10min', label: '10 minuti prima' },
+    { value: '5min', label: '5 minuti prima' },
+    { value: '1min', label: '1 minuto prima' }
   ];
 
   const handlePrealertChange = (value: string, checked: boolean) => {

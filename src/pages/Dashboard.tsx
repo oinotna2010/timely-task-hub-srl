@@ -73,7 +73,7 @@ const Dashboard = () => {
       Notification.requestPermission();
     }
 
-    const notificationInterval = setInterval(checkNotifications, 60000);
+    const notificationInterval = setInterval(checkNotifications, 30000);
     return () => clearInterval(notificationInterval);
   }, [navigate]);
 
@@ -86,14 +86,20 @@ const Dashboard = () => {
       const hoursUntil = Math.floor((deadlineDate.getTime() - now.getTime()) / (1000 * 60 * 60));
       
       deadline.prealert.forEach(alert => {
-        let alertHours = 0;
-        if (alert === '3mesi') alertHours = 24 * 90;
-        else if (alert === '1mese') alertHours = 24 * 30;
-        else if (alert === '20giorni') alertHours = 24 * 20;
-        else if (alert === '15giorni') alertHours = 24 * 15;
-        else if (alert === '7giorni') alertHours = 24 * 7;
+        let alertMinutes = 0;
+        if (alert === '3mesi') alertMinutes = 24 * 60 * 90;
+        else if (alert === '1mese') alertMinutes = 24 * 60 * 30;
+        else if (alert === '20giorni') alertMinutes = 24 * 60 * 20;
+        else if (alert === '15giorni') alertMinutes = 24 * 60 * 15;
+        else if (alert === '7giorni') alertMinutes = 24 * 60 * 7;
+        else if (alert === '30min') alertMinutes = 30;
+        else if (alert === '10min') alertMinutes = 10;
+        else if (alert === '5min') alertMinutes = 5;
+        else if (alert === '1min') alertMinutes = 1;
         
-        if (hoursUntil === alertHours) {
+        const minutesUntil = Math.floor((deadlineDate.getTime() - now.getTime()) / (1000 * 60));
+        
+        if (minutesUntil === alertMinutes) {
           showNotification(deadline);
         }
       });
@@ -127,8 +133,21 @@ const Dashboard = () => {
     localStorage.setItem('activityLogs', JSON.stringify([log, ...existingLogs]));
 
     localStorage.removeItem('currentUser');
+    // Non rimuovere i dati se "ricordami" è attivo, altrimenti rimuovi solo currentUser
     if (localStorage.getItem('rememberMe') !== 'true') {
+      // Mantieni i dati essenziali
+      const users = localStorage.getItem('users');
+      const deadlines = localStorage.getItem('deadlines');
+      const categories = localStorage.getItem('categories');
+      const activityLogs = localStorage.getItem('activityLogs');
+      
       localStorage.clear();
+      
+      // Ripristina i dati essenziali
+      if (users) localStorage.setItem('users', users);
+      if (deadlines) localStorage.setItem('deadlines', deadlines);
+      if (categories) localStorage.setItem('categories', categories);
+      if (activityLogs) localStorage.setItem('activityLogs', activityLogs);
     }
     navigate('/');
   };

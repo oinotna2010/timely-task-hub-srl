@@ -16,6 +16,10 @@ interface Deadline {
 }
 
 export const exportToPDF = async (deadlines: Deadline[], categories: string[]) => {
+  // Filtra solo scadenze attive
+  const now = new Date();
+  const activeDeadlines = deadlines.filter(d => !d.completed && new Date(`${d.date}T${d.time}`) > now);
+  
   const pdf = new jsPDF();
   let yPosition = 20;
 
@@ -25,7 +29,7 @@ export const exportToPDF = async (deadlines: Deadline[], categories: string[]) =
   yPosition += 10;
   
   pdf.setFontSize(14);
-  pdf.text('Sistema Gestione Scadenze', 20, yPosition);
+  pdf.text('Sistema Gestione Scadenze - Solo Scadenze Attive', 20, yPosition);
   yPosition += 15;
 
   // Data di esportazione
@@ -39,20 +43,12 @@ export const exportToPDF = async (deadlines: Deadline[], categories: string[]) =
   yPosition += 8;
   
   pdf.setFontSize(10);
-  pdf.text(`Totale scadenze: ${deadlines.length}`, 25, yPosition);
-  yPosition += 6;
-  
-  const activeDeadlines = deadlines.filter(d => new Date(`${d.date}T${d.time}`) > new Date()).length;
-  pdf.text(`Scadenze attive: ${activeDeadlines}`, 25, yPosition);
-  yPosition += 6;
-  
-  const completedDeadlines = deadlines.filter(d => d.completed).length;
-  pdf.text(`Scadenze completate: ${completedDeadlines}`, 25, yPosition);
+  pdf.text(`Scadenze attive esportate: ${activeDeadlines.length}`, 25, yPosition);
   yPosition += 15;
 
   // Scadenze per categoria
   categories.forEach(category => {
-    const categoryDeadlines = deadlines.filter(d => d.category === category);
+    const categoryDeadlines = activeDeadlines.filter(d => d.category === category);
     if (categoryDeadlines.length === 0) return;
 
     // Verifica se c'è spazio sufficiente, altrimenti nuova pagina
