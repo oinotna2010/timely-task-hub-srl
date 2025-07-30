@@ -13,9 +13,11 @@ import ManageCategoriesModal from '@/components/ManageCategoriesModal';
 import SettingsModal from '@/components/SettingsModal';
 import ActivityLogsModal from '@/components/ActivityLogsModal';
 import ConfirmDialog from '@/components/ConfirmDialog';
+import NotificationManager from '@/components/NotificationManager';
 import { exportToPDF } from '@/utils/pdfExport';
 import { format, isAfter, isBefore } from 'date-fns';
 import { it } from 'date-fns/locale';
+import { socketService } from '@/services/socket';
 
 interface User {
   username: string;
@@ -50,6 +52,14 @@ const Dashboard = () => {
   const [showLogsModal, setShowLogsModal] = useState(false);
   const [activeTab, setActiveTab] = useState('active');
   const [deadlineToDelete, setDeadlineToDelete] = useState<string | null>(null);
+
+  // Funzione per ricaricare le scadenze quando arrivano aggiornamenti via socket
+  const handleDeadlineUpdate = () => {
+    const savedDeadlines = localStorage.getItem('deadlines');
+    if (savedDeadlines) {
+      setDeadlines(JSON.parse(savedDeadlines));
+    }
+  };
 
   useEffect(() => {
     const userData = localStorage.getItem('currentUser');
@@ -118,6 +128,17 @@ const Dashboard = () => {
   };
 
   const showNotification = (deadline: Deadline) => {
+    // Invia notifica via socket se connesso (per altri dispositivi/utenti)
+    if (socketService.isSocketConnected()) {
+      socketService.sendNotification({
+        title: `Scadenza: ${deadline.title}`,
+        message: `${deadline.description}\nScadenza: ${format(new Date(`${deadline.date}T${deadline.time}`), 'dd/MM/yyyy HH:mm', { locale: it })}`,
+        type: 'deadline',
+        deadlineId: parseInt(deadline.id)
+      });
+    }
+
+    // Notifica locale
     if ('Notification' in window && Notification.permission === 'granted') {
       const notification = new Notification(`Scadenza: ${deadline.title}`, {
         body: `${deadline.description}\nScadenza: ${format(new Date(`${deadline.date}T${deadline.time}`), 'dd/MM/yyyy HH:mm', { locale: it })}`,
@@ -142,6 +163,9 @@ const Dashboard = () => {
     };
     const existingLogs = JSON.parse(localStorage.getItem('activityLogs') || '[]');
     localStorage.setItem('activityLogs', JSON.stringify([log, ...existingLogs]));
+
+    // Disconnetti il socket
+    socketService.disconnect();
 
     localStorage.removeItem('currentUser');
     // Non rimuovere i dati se "ricordami" è attivo, altrimenti rimuovi solo currentUser
@@ -596,6 +620,12 @@ const Dashboard = () => {
         onConfirm={() => deadlineToDelete && deleteDeadline(deadlineToDelete)}
         title="Conferma eliminazione"
         description="Sei sicuro di voler eliminare questa scadenza? Questa azione non può essere annullata."
+      />
+
+      {/* Gestore notifiche in tempo reale */}
+      <NotificationManager 
+        currentUser={currentUser}
+        onDeadlineUpdate={handleDeadlineUpdate}
       />
     </div>
   );
