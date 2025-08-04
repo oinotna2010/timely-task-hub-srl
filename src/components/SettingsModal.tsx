@@ -1,10 +1,11 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Switch } from '@/components/ui/switch';
 import { useToast } from '@/hooks/use-toast';
 
 interface User {
@@ -27,7 +28,14 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  const [serverMode, setServerMode] = useState(false);
   const { toast } = useToast();
+
+  useEffect(() => {
+    // Carica l'impostazione della modalità server
+    const savedServerMode = localStorage.getItem('serverMode');
+    setServerMode(savedServerMode === 'true');
+  }, []);
 
   const handleChangePassword = () => {
     if (!currentPassword || !newPassword || !confirmPassword) {
@@ -111,6 +119,30 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
     onClose();
   };
 
+  const handleServerModeChange = (enabled: boolean) => {
+    setServerMode(enabled);
+    localStorage.setItem('serverMode', enabled.toString());
+    
+    // Log dell'azione
+    const log = {
+      id: Date.now().toString(),
+      action: enabled ? 'Modalità Server Attivata' : 'Modalità Server Disattivata',
+      user: currentUser.username,
+      timestamp: new Date().toISOString(),
+      details: `L'utente ${currentUser.username} ha ${enabled ? 'attivato' : 'disattivato'} la modalità server`
+    };
+
+    const existingLogs = JSON.parse(localStorage.getItem('activityLogs') || '[]');
+    localStorage.setItem('activityLogs', JSON.stringify([log, ...existingLogs]));
+
+    toast({
+      title: enabled ? "Modalità Server Attivata" : "Modalità Server Disattivata",
+      description: enabled 
+        ? "Le scadenze verranno sincronizzate tramite server" 
+        : "Le scadenze verranno salvate solo localmente",
+    });
+  };
+
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
       <DialogContent className="sm:max-w-[500px]">
@@ -118,6 +150,39 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
           <DialogTitle>Impostazioni Account</DialogTitle>
         </DialogHeader>
         
+        {currentUser.isAdmin && (
+          <Card className="mb-4">
+            <CardHeader>
+              <CardTitle>Configurazione Sistema</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="flex items-center justify-between">
+                <div className="space-y-0.5">
+                  <Label htmlFor="server-mode">Modalità Server</Label>
+                  <p className="text-sm text-muted-foreground">
+                    {serverMode 
+                      ? "Le scadenze vengono sincronizzate tramite server (multiutente)" 
+                      : "Le scadenze vengono salvate solo localmente"
+                    }
+                  </p>
+                </div>
+                <Switch
+                  id="server-mode"
+                  checked={serverMode}
+                  onCheckedChange={handleServerModeChange}
+                />
+              </div>
+              {serverMode && (
+                <div className="p-3 bg-muted rounded-lg">
+                  <p className="text-sm">
+                    <strong>Modalità Server Attiva:</strong> Assicurati che il server sia in esecuzione su localhost:3001
+                  </p>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        )}
+
         <Card>
           <CardHeader>
             <CardTitle>Cambia Password</CardTitle>

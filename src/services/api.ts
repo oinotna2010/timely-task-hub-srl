@@ -1,7 +1,10 @@
 // Service per gestire tutte le chiamate API al server locale
 // TODO: Sostituire 'http://localhost:3001' con l'indirizzo del tuo server
 
-const API_BASE_URL = 'http://localhost:3001/api';
+const getApiBaseUrl = () => {
+  const serverMode = localStorage.getItem('serverMode') === 'true';
+  return serverMode ? 'http://localhost:3001/api' : null;
+};
 
 interface User {
   id?: number;
@@ -37,7 +40,14 @@ class ApiService {
   private token: string | null = localStorage.getItem('token');
 
   private async request(endpoint: string, options: RequestInit = {}) {
-    const url = `${API_BASE_URL}${endpoint}`;
+    const apiBaseUrl = getApiBaseUrl();
+    
+    // Se la modalità server non è attiva, solleva un errore
+    if (!apiBaseUrl) {
+      throw new Error('Server mode is disabled. Enable it in settings to use API calls.');
+    }
+
+    const url = `${apiBaseUrl}${endpoint}`;
     const config = {
       headers: {
         'Content-Type': 'application/json',
@@ -53,6 +63,11 @@ class ApiService {
     }
 
     return response.json();
+  }
+
+  // Metodo per verificare se la modalità server è attiva
+  isServerModeEnabled(): boolean {
+    return localStorage.getItem('serverMode') === 'true';
   }
 
   // Autenticazione

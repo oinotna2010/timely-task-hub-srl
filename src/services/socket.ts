@@ -17,6 +17,13 @@ class SocketService {
   private isConnected = false;
 
   connect(userId: string) {
+    // Verifica se la modalità server è attiva
+    const serverMode = localStorage.getItem('serverMode') === 'true';
+    if (!serverMode) {
+      console.log('Modalità server disattivata - Socket non connesso');
+      return null;
+    }
+
     if (this.socket) {
       this.disconnect();
     }
@@ -82,20 +89,27 @@ class SocketService {
 
   // Invia una notifica a tutti gli utenti connessi
   sendNotification(notification: Omit<NotificationData, 'id' | 'timestamp'>) {
-    if (this.socket && this.isConnected) {
+    const serverMode = localStorage.getItem('serverMode') === 'true';
+    if (serverMode && this.socket && this.isConnected) {
       this.socket.emit('send_notification', notification);
     }
   }
 
   // Segna una notifica come letta
   markNotificationAsRead(notificationId: string) {
-    if (this.socket && this.isConnected) {
+    const serverMode = localStorage.getItem('serverMode') === 'true';
+    if (serverMode && this.socket && this.isConnected) {
       this.socket.emit('mark_read', notificationId);
     }
   }
 
   isSocketConnected() {
-    return this.isConnected;
+    const serverMode = localStorage.getItem('serverMode') === 'true';
+    return serverMode && this.isConnected;
+  }
+
+  isServerModeEnabled() {
+    return localStorage.getItem('serverMode') === 'true';
   }
 }
 
