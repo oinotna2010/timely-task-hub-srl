@@ -18,6 +18,8 @@ import { exportToPDF } from '@/utils/pdfExport';
 import { format, isAfter, isBefore } from 'date-fns';
 import { it } from 'date-fns/locale';
 import { socketService } from '@/services/socket';
+import { useDeadlines } from '@/hooks/useDeadlines';
+import { useUsers } from '@/hooks/useUsers';
 
 interface User {
   username: string;
@@ -33,17 +35,23 @@ interface Deadline {
   date: string;
   time: string;
   category: string;
+  priority: 'bassa' | 'media' | 'alta';
   prealert: string[];
+  assignedTo: string[];
   createdBy: string;
-  createdAt: string;
-  completed?: boolean;
+  createdAt?: string;
+  completed: boolean;
 }
 
 const Dashboard = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
+  
+  // Usa i nuovi hooks
+  const { deadlines, loading: deadlineLoading, createDeadline, updateDeadline, deleteDeadline: deleteDeadlineAPI, completeDeadline, loadDeadlines, isServerMode } = useDeadlines();
+  const { users } = useUsers();
+  
   const [currentUser, setCurrentUser] = useState<User | null>(null);
-  const [deadlines, setDeadlines] = useState<Deadline[]>([]);
   const [categories, setCategories] = useState<string[]>(['Amministrative', 'Tecniche', 'Commerciali', 'Generali']);
   const [showAddModal, setShowAddModal] = useState(false);
   const [showUsersModal, setShowUsersModal] = useState(false);
@@ -55,10 +63,7 @@ const Dashboard = () => {
 
   // Funzione per ricaricare le scadenze quando arrivano aggiornamenti via socket
   const handleDeadlineUpdate = () => {
-    const savedDeadlines = localStorage.getItem('deadlines');
-    if (savedDeadlines) {
-      setDeadlines(JSON.parse(savedDeadlines));
-    }
+    loadDeadlines();
   };
 
   useEffect(() => {
@@ -68,11 +73,6 @@ const Dashboard = () => {
       return;
     }
     setCurrentUser(JSON.parse(userData));
-
-    const savedDeadlines = localStorage.getItem('deadlines');
-    if (savedDeadlines) {
-      setDeadlines(JSON.parse(savedDeadlines));
-    }
 
     const savedCategories = localStorage.getItem('categories');
     if (savedCategories) {
@@ -187,90 +187,123 @@ const Dashboard = () => {
     navigate('/');
   };
 
-  const addDeadline = (newDeadline: Omit<Deadline, 'id' | 'createdBy' | 'createdAt'>) => {
-    const deadline: Deadline = {
-      ...newDeadline,
-      id: Date.now().toString(),
-      createdBy: currentUser?.username || '',
-      createdAt: new Date().toISOString()
-    };
-    
-    const updatedDeadlines = [...deadlines, deadline];
-    setDeadlines(updatedDeadlines);
-    localStorage.setItem('deadlines', JSON.stringify(updatedDeadlines));
-    
-    // Log dell'azione
-    const log = {
-      id: Date.now().toString(),
-      action: 'Aggiunta scadenza',
-      user: currentUser?.username || '',
-      timestamp: new Date().toISOString(),
-      details: `Aggiunta scadenza: ${deadline.title}`
-    };
-    const existingLogs = JSON.parse(localStorage.getItem('activityLogs') || '[]');
-    localStorage.setItem('activityLogs', JSON.stringify([log, ...existingLogs]));
-    
-    toast({
-      title: "Scadenza aggiunta",
-      description: `"${deadline.title}" è stata aggiunta con successo`,
-    });
+  const addDeadline = async (newDeadline: Omit<Deadline, 'id' | 'createdBy' | 'createdAt'>) => {
+    try {
+      const deadline = {
+        ...newDeadline,
+        createdBy: currentUser?.username || '',
+        completed: false,
+      };
+      
+      await createDeadline(deadline);
+      
+      // Log dell'azione
+      const log = {
+        id: Date.now().toString(),
+        action: 'Aggiunta scadenza',
+        user: currentUser?.username || '',
+        timestamp: new Date().toISOString(),
+        details: `Aggiunta scadenza: ${deadline.title} ${isServerMode ? '(Server)' : '(Locale)'}`
+      };
+      const existingLogs = JSON.parse(localStorage.getItem('activityLogs') || '[]');
+      localStorage.setItem('activityLogs', JSON.stringify([log, ...existingLogs]));
+      
+      toast({
+        title: "Scadenza aggiunta",
+        description: `"${deadline.title}" è stata aggiunta con successo ${isServerMode ? '(sincronizzata sul server)' : '(salvata localmente)'}`,
+      });
+    } catch (error) {
+      toast({
+        title: "Errore",
+        description: "Errore nell'aggiunta della scadenza",
+        variant: "destructive"
+      });
+    }
   };
 
-  const deleteDeadline = (id: string) => {
-    const deadline = deadlines.find(d => d.id === id);
-    const updatedDeadlines = deadlines.filter(d => d.id !== id);
-    setDeadlines(updatedDeadlines);
-    localStorage.setItem('deadlines', JSON.stringify(updatedDeadlines));
-    
-    // Log dell'azione
-    const log = {
-      id: Date.now().toString(),
-      action: 'Eliminazione scadenza',
-      user: currentUser?.username || '',
-      timestamp: new Date().toISOString(),
-      details: `Eliminata scadenza: ${deadline?.title}`
-    };
-    const existingLogs = JSON.parse(localStorage.getItem('activityLogs') || '[]');
-    localStorage.setItem('activityLogs', JSON.stringify([log, ...existingLogs]));
-    
-    setDeadlineToDelete(null);
-    
-    toast({
-      title: "Scadenza eliminata",
-      description: "La scadenza è stata rimossa",
-    });
+  const handleDeleteDeadline = async (id: string) => {
+    try {
+      const deadline = deadlines.find(d => d.id === id);
+      await deleteDeadlineAPI(id);
+      
+      // Log dell'azione
+      const log = {
+        id: Date.now().toString(),
+        action: 'Eliminazione scadenza',
+        user: currentUser?.username || '',
+        timestamp: new Date().toISOString(),
+        details: `Eliminata scadenza: ${deadline?.title} ${isServerMode ? '(Server)' : '(Locale)'}`
+      };
+      const existingLogs = JSON.parse(localStorage.getItem('activityLogs') || '[]');
+      localStorage.setItem('activityLogs', JSON.stringify([log, ...existingLogs]));
+      
+      setDeadlineToDelete(null);
+      
+      toast({
+        title: "Scadenza eliminata",
+        description: "La scadenza è stata rimossa",
+      });
+    } catch (error) {
+      toast({
+        title: "Errore",
+        description: "Errore nell'eliminazione della scadenza",
+        variant: "destructive"
+      });
+    }
   };
 
-  const toggleDeadlineCompleted = (id: string) => {
-    const updatedDeadlines = deadlines.map(d => 
-      d.id === id ? { ...d, completed: !d.completed } : d
-    );
-    setDeadlines(updatedDeadlines);
-    localStorage.setItem('deadlines', JSON.stringify(updatedDeadlines));
-    
-    const deadline = deadlines.find(d => d.id === id);
-    const action = deadline?.completed ? 'Riattivata' : 'Completata';
-    
-    // Log dell'azione
-    const log = {
-      id: Date.now().toString(),
-      action: `${action} scadenza`,
-      user: currentUser?.username || '',
-      timestamp: new Date().toISOString(),
-      details: `${action} scadenza: ${deadline?.title}`
-    };
-    const existingLogs = JSON.parse(localStorage.getItem('activityLogs') || '[]');
-    localStorage.setItem('activityLogs', JSON.stringify([log, ...existingLogs]));
-    
-    toast({
-      title: `Scadenza ${action.toLowerCase()}`,
-      description: `"${deadline?.title}" è stata ${action.toLowerCase()}`,
-    });
+  const toggleDeadlineCompleted = async (id: string) => {
+    try {
+      const deadline = deadlines.find(d => d.id === id);
+      if (deadline && !deadline.completed) {
+        await completeDeadline(id);
+        
+        // Log dell'azione
+        const log = {
+          id: Date.now().toString(),
+          action: 'Completamento scadenza',
+          user: currentUser?.username || '',
+          timestamp: new Date().toISOString(),
+          details: `Completata scadenza: ${deadline.title} ${isServerMode ? '(Server)' : '(Locale)'}`
+        };
+        const existingLogs = JSON.parse(localStorage.getItem('activityLogs') || '[]');
+        localStorage.setItem('activityLogs', JSON.stringify([log, ...existingLogs]));
+        
+        toast({
+          title: "Scadenza completata",
+          description: `"${deadline.title}" è stata completata`,
+        });
+      } else {
+        // Per ora, non permettiamo di riattivare scadenze completate via API
+        // Solo in modalità locale
+        if (!isServerMode && deadline) {
+          await updateDeadline(id, { completed: !deadline.completed });
+          
+          const action = deadline.completed ? 'Riattivata' : 'Completata';
+          toast({
+            title: `Scadenza ${action.toLowerCase()}`,
+            description: `"${deadline.title}" è stata ${action.toLowerCase()}`,
+          });
+        }
+      }
+    } catch (error) {
+      toast({
+        title: "Errore",
+        description: "Errore nel completamento della scadenza",
+        variant: "destructive"
+      });
+    }
   };
 
   const handleExportPDF = async () => {
     try {
-      await exportToPDF(deadlines, categories);
+      // Converte i tipi per la compatibilità con exportToPDF
+      const deadlinesForExport = deadlines.map(d => ({
+        ...d,
+        createdAt: d.createdAt || new Date().toISOString()
+      }));
+      
+      await exportToPDF(deadlinesForExport, categories);
       
       // Log dell'azione
       const log = {
@@ -617,7 +650,7 @@ const Dashboard = () => {
       <ConfirmDialog
         isOpen={!!deadlineToDelete}
         onClose={() => setDeadlineToDelete(null)}
-        onConfirm={() => deadlineToDelete && deleteDeadline(deadlineToDelete)}
+        onConfirm={() => deadlineToDelete && handleDeleteDeadline(deadlineToDelete)}
         title="Conferma eliminazione"
         description="Sei sicuro di voler eliminare questa scadenza? Questa azione non può essere annullata."
       />
